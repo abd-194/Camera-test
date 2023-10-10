@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Live Video Stream</title>
+</head>
+<body>
+    <h1>Live Video Stream</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+
+    <script>
+        const videoElement = document.getElementById('video');
+        const canvasElement = document.getElementById('canvas');
+        const ctx = canvasElement.getContext('2d');
+        let streamingActive = false;
+
+        async function startStreaming() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                videoElement.srcObject = stream;
+                streamingActive = true;
+                processFrames();
+            } catch (error) {
+                console.error('Error accessing the camera:', error);
+            }
+        }
+
+        async function processFrames() {
+            while (streamingActive) {
+                ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                const frameDataUrl = canvasElement.toDataURL('image/jpeg', 1.0);
+
+                try {
+                    const response = await fetch('/process_frame', {
+                        method: 'POST',
+                        body: new URLSearchParams({ frame_data: frameDataUrl }),
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    const processedFrameDataUrl = data.processed_frame_data;
+                    const processedFrame = new Image();
+                    processedFrame.src = processedFrameDataUrl;
+
+                    processedFrame.onload = () => {
+                        ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                        ctx.drawImage(processedFrame, 0, 0, canvasElement.width, canvasElement.height);
+                    };
+                } catch (error) {
+                    console.error('Error processing frame:', error);
+                }
+            }
+        }
+
+        window.addEventListener('load', startStreaming);
+        window.addEventListener('beforeunload', () => {
+            streamingActive = false;
+        });
+    </script>
+</body>
+</html>
